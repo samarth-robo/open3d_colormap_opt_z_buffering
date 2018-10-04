@@ -6,7 +6,7 @@ the input RGB-D image.
 
 This works fine if the depth map is not very noisy. But if the depth map comes
 from a noisy sensor (e.g. Kinect), it creates problems. See [this issue](https://github.com/IntelVCL/Open3D/issues/594)
-and the texturing shown below, where artificial noise of 0 mean and 30mm 
+and the texturing shown below, where artificial noise of 0 mean and 50mm 
 stdev was added to the depth maps 
 (data from the [Open3D tutorial](http://www.open3d.org/docs/tutorial/Advanced/color_map_optimization.html)):
 ![before optim](before_optim.png)
