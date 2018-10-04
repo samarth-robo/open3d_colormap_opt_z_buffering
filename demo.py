@@ -6,6 +6,7 @@ osp = os.path
 
 path = osp.expanduser(osp.join('~', 'Downloads', 'fountain', 'fountain_small'))
 debug_mode = False
+USE_Z_BUFFERING = True
 
 
 def get_file_list(dir, extension):
@@ -44,6 +45,7 @@ def save_depth_maps(mesh, intrinsic, extrinsics, filenames):
     glb = save_depth_maps
     if glb.index >= 0:
       depth = np.asarray(vis.capture_depth_float_buffer(False), dtype=np.float32)
+      # correct the depth map (useful if your camera has non-ideal intrinsics)
       depth = cv2.warpAffine(depth, glb.affine_M,
         (depth.shape[1], depth.shape[0]), cv2.WARP_INVERSE_MAP,
         cv2.BORDER_CONSTANT, 0)
@@ -72,26 +74,34 @@ if __name__ == "__main__":
     camera = open3d.read_pinhole_camera_trajectory(os.path.join(path, "scene/key.log"))
     mesh = open3d.read_triangle_mesh(os.path.join(path, "scene", "integrated.ply"))
 
-    # Read RGBD images
-    rgbd_images = []
     color_image_path = get_file_list(
             os.path.join(path, "image/"), extension = ".jpg")
-    depth_image_path = [osp.join('/tmp', fn.replace('jpg', 'png'))
-      for fn in color_image_path]
+
+    if USE_Z_BUFFERING:
+      depth_image_path = [osp.join('/tmp', fn.replace('jpg', 'png'))
+        for fn in color_image_path]
+      # generate depth maps
+      save_depth_maps(mesh, camera.intrinsic, np.asarray(camera.extrinsic),
+        depth_image_path)
+    else:
+      depth_filenames = get_file_list(
+        os.path.join(path, "depth/"), extension = ".png")
+      depth_image_path = []
+
+      # add artificial noise to the depth maps
+      for i in range(len(depth_filenames)):
+        depth = open3d.read_image(osp.join(path, 'depth', depth_filenames[i]))
+        depth = np.asarray(depth, dtype=np.float)
+        depth += 50*np.random.rand(*depth.shape)
+        tmp_filename = osp.join('/tmp', 'depth_{:s}'.format(depth_filenames[i]))
+        depth_image_path.append(tmp_filename)
+
     assert(len(depth_image_path) == len(color_image_path))
 
-    # generate depth maps
-    save_depth_maps(mesh, camera.intrinsic, np.asarray(camera.extrinsic),
-      depth_image_path)
-
+    # Read RGBD images
+    rgbd_images = []
     for i in range(len(depth_image_path)):
         depth = open3d.read_image(depth_image_path[i])
-
-        # add artificial noise to the depth maps
-        depth = np.asarray(depth, dtype=np.float)
-        depth += 30*np.random.rand(*depth.shape)
-        depth = open3d.Image(depth.astype(np.uint16))
-
         color = open3d.read_image(os.path.join(path, 'image', color_image_path[i]))
         rgbd_image = open3d.create_rgbd_image_from_color_and_depth(color, depth,
                 convert_rgb_to_intensity = False)
@@ -110,14 +120,14 @@ if __name__ == "__main__":
     open3d.write_triangle_mesh(os.path.join(path, "scene",
         "color_map_before_optimization.ply"), mesh)
 
-    # # Optimize texture and save the mesh as texture_mapped.ply
-    # # This is implementation of following paper
-    # # Q.-Y. Zhou and V. Koltun,
-    # # Color Map Optimization for 3D Reconstruction with Consumer Depth Cameras,
-    # # SIGGRAPH 2014
-    # option.maximum_iteration = 300
-    # option.non_rigid_camera_coordinate = False
-    # open3d.color_map_optimization(mesh, rgbd_images, camera, option)
-    # open3d.draw_geometries([mesh])
-    # open3d.write_triangle_mesh(os.path.join(path, "scene",
-    #     "color_map_after_optimization.ply"), mesh)
+    # Optimize texture and save the mesh as texture_mapped.ply
+    # This is implementation of following paper
+    # Q.-Y. Zhou and V. Koltun,
+    # Color Map Optimization for 3D Reconstruction with Consumer Depth Cameras,
+    # SIGGRAPH 2014
+    option.maximum_iteration = 300
+    option.non_rigid_camera_coordinate = False
+    open3d.color_map_optimization(mesh, rgbd_images, camera, option)
+    open3d.draw_geometries([mesh])
+    open3d.write_triangle_mesh(os.path.join(path, "scene",
+        "color_map_after_optimization.ply"), mesh)
